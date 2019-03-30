@@ -1,5 +1,8 @@
-//2019-3-15
-//能够加载Adaboost的xml文件 并且识别到目标 但是误报很多 需要用高斯背景建模滤除
+//2019-3-30
+//能够加载Adaboost的xml文件 并且识别到目标 
+//用了新的模型 误报只减少了一点点 加了框的大小以减少误报 有一点用
+//总体感觉还是背景有很多误报 通过背景滤除和框的大小的选择 减少了很多 
+//识别的准确率还是不够高 训练的样本很好 但是实际中 人姿态变化很大 而且 从大到小 变化很多 只能在比较符合训练集大小的情况下识别出来
 
 #include <opencv2/core.hpp>
 #include <opencv2/opencv.hpp>
@@ -14,6 +17,7 @@
 using namespace std;
 using namespace cv;
 
+const string img_save_path = "ground_result/";
 # if 1
 
 //adaboost 加 视频检测 加 高斯背景过滤
@@ -22,11 +26,11 @@ int main()
 {
 	//载入训练模型
 	CascadeClassifier cascade;
-	cascade.load("cascade.xml");
+	cascade.load("cascade_329.xml");
 
 	//初始化视频输入
 	VideoCapture video;
-	video.open("playground.avi");
+	video.open("fire.mp4");
 	if (!video.isOpened())
 	{
 		printf("No Video\n");
@@ -46,16 +50,19 @@ int main()
 
 	//保存检测结果
 	VideoWriter out;
-	out.open("test_result.avi", CV_FOURCC('D', 'I', 'V', 'X'), 25.0, Size(512, 288), true);//这个参数？？
-
+	out.open("res_fire.mp4", CV_FOURCC('D', 'I', 'V', 'X'), 25.0, Size(320, 180), true);//这个参数？？
+	
+	//计数截取的框框
+	int count = 0;
+	char saveName[256];
 	//检测过程
 	while (video.read(frame))
 	{
-		resize(frame, frame, Size(256, 144));
+		resize(frame, frame, Size(320, 180));
 		//进行高斯建模
 		pMOG2->apply(frame, bsmMOG2);
 		morphologyEx(bsmMOG2, bsmMOG2, MORPH_OPEN, kernel);//?
-		resize(bsmMOG2, bsmMOG2, Size(256, 144));
+		resize(bsmMOG2, bsmMOG2, Size(320, 180));
 		imshow("MOG2", bsmMOG2);
 		
 		//提取边缘
@@ -137,12 +144,27 @@ int main()
 		for (int i = 0; i < found_filtered.size(); i++)
 		{
 			Rect r = found_filtered[i];
-			if (x > r.tl().x && y > r.tl().y && x < r.br().x && y < r.br().y)
+#if 1 //进行滤除
+			int lx = r.tl().x, ly = r.tl().y, rx = r.br().x, ry = r.br().y;
+			if (x > lx && y > ly && x < rx && y < ry && r.width < 100 && r.height < 100)
+			{
 				rectangle(frame, r.tl(), r.br(), Scalar(0, 0, 255), 2);
+				//把框出来的目标输出到一个文件夹 分析误检测的特征
+				//Mat imgROI = frame(Rect(lx, ly, rx - lx, ry - ly));
+				//Mat imgROI = frame(r);
+				//sprintf_s(saveName, "cut_%04d.jpg", ++count);
+				//string img_path = img_save_path + string(saveName);
+				//imwrite(img_path, imgROI);
+				out << frame;
+			}
+#else //不进行滤除
+			rectangle(frame, r.tl(), r.br(), Scalar(0, 0, 255), 2);
+			out << frame;
+#endif
 		}
 
 		imshow("detect result", frame);
-		out << frame;
+		
 
 		if (waitKey(1) == 'q')
 			break;
