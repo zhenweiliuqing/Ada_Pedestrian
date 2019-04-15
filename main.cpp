@@ -1,279 +1,42 @@
-//2019-3-18
-//这个程序能够对图像进行二值化 并且找到二值化图像的质心
-//4-12 已经实现能够对最大的n个轮廓提取质心
-//4-12 需要对视频能够实现提取质心 可以实现
+//2019-3-30
+//能够加载Adaboost的xml文件 并且识别到目标 
+//用了新的模型 误报只减少了一点点 加了框的大小以减少误报 有一点用
+//总体感觉还是背景有很多误报 通过背景滤除和框的大小的选择 减少了很多 
+//识别的准确率还是不够高 训练的样本很好 但是实际中 人姿态变化很大 而且 从大到小 变化很多 只能在比较符合训练集大小的情况下识别出来
+//记得给轮廓加个阈值判断
 #include <opencv2/core.hpp>
+#include <opencv2/opencv.hpp>
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
-#include <opencv/cv.hpp>
+//#include <opencv2/objdetect.hpp>
+#include <vector>
 #include <iostream>
-#include <algorithm>
+#include <fstream>
+#include <opencv2/ml/ml.hpp>
+
 using namespace std;
 using namespace cv;
 
 #define CONTOUR_SIZE 5
-#define Filter_W 200
-#define Filter_H 200
-#define Video_W 768
-#define Video_H 576
+#define Filter_W 120
+#define Filter_H 120
+#define Video_W 640
+#define Video_H 360
 
-# if 0
-int Otsu(Mat &image)
-{
-	int width = image.cols;
-	int height = image.rows;
-	int x = 0, y = 0;
-	int pixelCount[256];
-	float pixelPro[256];
-	int i, j, pixelSum = width * height, threshold;
+const string img_save_path = "fire_result/";
+# if 1
 
-	uchar *data = (uchar*)image.data;
-
-	for (i = 0; i < 256; i++)
-	{
-		pixelCount[i] = 0;
-		pixelPro[i] = 0;
-	}
-
-	for (i = y; i < height; i++)
-	{
-		for (j = x; j < width; j++)
-		{
-			pixelCount[data[i * image.step + j]]++;
-		}
-	}
-
-	for (i = 0; i < 256; i++)
-	{
-		pixelPro[i] = (float)(pixelCount[i]) / (float)(pixelSum);
-	}
-
-	float w0, w1, u0tmp, u1tmp, u0, u1, u, deltaTmp, deltaMax = 0;
-	for (i = 0; i < 256; i++)
-	{
-		w0 = w1 = u0tmp = u1tmp = u0 = u1 = u = deltaTmp = 0;
-		for (j = 0; j < 256; j++)
-		{
-			if (j <= i)
-			{
-				w0 += pixelCount[j];
-				u0tmp += j * pixelPro[j];
-			}
-			else
-			{
-				w1 += pixelPro[j];
-				u1tmp += j * pixelPro[j];
-			}
-		}
-
-		u0 = u0tmp / w0;
-		u1 = u1tmp / w1;
-		u = u0tmp + u1tmp;
-
-		deltaTmp = w0 * (u0 - u) * (u0 - u) + w1 * (u1 - u) * (u1 - u);
-
-		if (deltaTmp > deltaMax)
-		{
-			deltaMax = deltaTmp;
-			threshold = i;
-		}
-	}
-	return threshold;
-}
+//adaboost 加 视频检测 加 高斯背景过滤
 
 int main()
 {
-	Mat White = imread("gmm.png");
-	int threshold_white = 120;//Otsu(White);
-	cout << "最佳阈值" << threshold_white << endl;
-	Mat thresholded = Mat::zeros(White.size(), White.type());//返回指定大小和类型的零数组
-	threshold(White, thresholded, threshold_white, 255, CV_THRESH_BINARY);
-	imshow("二值化", thresholded);
-	waitKey(0);
-	vector<vector<Point>> contours;
-	vector<Vec4i> hierarchy;//4维向量
-	findContours(thresholded, contours, hierarchy, CV_RETR_CCOMP, CV_CHAIN_APPROX_SIMPLE);//找到轮廓
+	//载入训练模型
+	CascadeClassifier cascade;
+	cascade.load("cascade_329.xml");
 
-	int count = 0;
-	Point pt[10];
-	Moments moment;//矩
-	vector<Point> Center;
-	for (int i = 0; i >= 0; i = hierarchy[i][0])//这是什么意思？？？
-	{
-		Mat temp(contours.at(i));
-		Scalar color(0, 0, 255);
-		moment = moments(temp, false);
-		if (moment.m00 != 0)
-		{
-			pt[i].x = cvRound(moment.m10 / moment.m00);
-			pt[i].y = cvRound(moment.m01 / moment.m00);
-		}
-		Point p = Point(pt[i].x, pt[i].y);
-		circle(White, p, 1, color, 1, 8);
-		count++;
-		Center.push_back(p);
-	}
-	cout << "重心点个数:" << Center.size() << endl;
-	cout << "轮廓数量" << contours.size() << endl;
-	//imwrite("Center.tif", White);
-}
-#endif
-
-//这个主函数能够实现对图片的操作
-#if 0
-int main()
-{
-	Mat img, imgGray, result;
-	img = imread("test.jpg");
-
-	if (!img.data)
-	{
-		cout << "Please input image path" << endl;
-		return 0;
-	}
-	imshow("原图", img);
-	cvtColor(img, imgGray, CV_BGR2GRAY);
-	imshow("灰度图", imgGray);
-	threshold(imgGray, result, 100, 255, CV_THRESH_BINARY);
-	imshow("二值化", result);
-
-#if 0
-	vector<vector<Point>> contours;
-	vector<Vec4i> hierarchy;//4维向量
-	findContours(result, contours, hierarchy, CV_RETR_CCOMP, CV_CHAIN_APPROX_SIMPLE);//找到轮廓
-
-	int count = 0;
-	Point pt[10];
-	Moments moment;//矩
-	vector<Point> Center;
-	for (int i = 0; i >= 0; i = hierarchy[i][0])//这是什么意思？？？
-	{
-		Mat temp(contours.at(i));
-		Scalar color(0, 0, 0);
-		moment = moments(temp, false);
-		if (moment.m00 != 0)
-		{
-			pt[i].x = cvRound(moment.m10 / moment.m00);
-			pt[i].y = cvRound(moment.m01 / moment.m00);
-
-			Point p = Point(pt[i].x, pt[i].y);
-			circle(img, p, 10, color, 1, 8);
-			count++;
-			Center.push_back(p);
-		}
-	}
-	cout << "重心点个数:" << Center.size() << endl;
-	for (int i = 0; i < Center.size(); i++)
-	{
-		cout << Center[i].x << " "  << Center[i].y << endl;
-		rectangle(img, Rect(Center[i].x, Center[i].y, 100, 100), Scalar(255, 255, 255), 2);
-	}
-	cout << "轮廓数量" << contours.size() << endl;
-#endif
-
-	Mat canny_output;
-	vector<vector<Point>> contours;
-
-	vector<Vec4i> hierarchy;//4维向量
-	//利用canny算法检测边缘
-	Canny(result, canny_output, 30, 90, 3);//这个参数的设置?
-	imshow("canny", canny_output);
-	//查找轮廓
-	findContours(canny_output, contours, hierarchy, CV_RETR_TREE, CV_CHAIN_APPROX_SIMPLE, Point(0,0));
-	//要是可以对contours里的size进行排序就好了
-	//sort(contours.begin(), contours.end());默认的sort应该是只能对int类型进行排序
-	vector<int> temp_contour;
-	for (int i = 0; i < contours.size(); i++)
-	{
-		temp_contour.push_back(contours[i].size());
-	}
-	sort(temp_contour.rbegin(), temp_contour.rend());//从大到小排序
-	vector<int> res_contour;
-	for (int i = 0; i < CONTOUR_SIZE; i++)
-	{
-		res_contour.push_back(temp_contour[i]);
-	}
-	vector<vector<Point>> best_contours;//最好的轮廓
-	for (int i = 0; i < res_contour.size(); i++)
-	{
-		for (auto it = contours.begin(); it != contours.end();)
-		{
-			if (res_contour[i] == it->size())
-			{
-				best_contours.push_back(*it);
-				it = contours.erase(it);
-				break;
-			}
-			else
-			{
-				it++;
-			}
-		}
-	}
-
-	/*
-	int max = 0, max_index = 0;
-	for (int i = 0; i < contours.size(); i++)
-	{
-		if (max < contours[i].size())
-		{
-			max = contours[i].size();
-			max_index = i;
-		}
-	}
-	*/
-	//计算轮廓矩
-	vector<Moments> mu(best_contours.size());
-	for (int i = 0; i < best_contours.size(); i++)
-	{
-		mu[i] = moments(best_contours[i], false);
-	}
-	//计算轮廓的质心
-	vector<Point2f> mc(best_contours.size());
-	for (int i = 0; i < best_contours.size(); i++)
-	{
-		mc[i] = Point2d(mu[i].m10 / mu[i].m00, mu[i].m01 / mu[i].m00);
-	}
-	//画轮廓及其质心并显示
-	Mat drawing = Mat::zeros(canny_output.size(), CV_8UC3);
-#if 1
-	for (int i = 0; i < best_contours.size(); i++)
-	{
-		Scalar color = Scalar(255, 0, 0);
-		drawContours(drawing, best_contours, i, color, 2, 8, hierarchy, 0, Point());
-		circle(drawing, mc[i], 5, Scalar(0, 0, 255), -1, 8, 0);
-		rectangle(drawing, boundingRect(best_contours.at(i)), cvScalar(0, 255, 0));
-		cout << "x:" << mc[i].x << "y:" << mc[i].y << endl;
-		char tam[100];
-		sprintf_s(tam, "(%0.0f, %0.0f)", mc[i].x, mc[i].y);
-		putText(drawing, tam, Point(mc[i].x, mc[i].y), FONT_HERSHEY_SCRIPT_SIMPLEX, 0.4, cvScalar(0, 255, 0), 1);
-	}
-#else
-
-	Scalar color = Scalar(255, 0, 0);
-	drawContours(drawing, contours, max_index, color, 2, 8, hierarchy, 0, Point());
-	circle(drawing, mc[max_index], 5, Scalar(0, 0, 255), -1, 8, 0);
-	rectangle(drawing, boundingRect(contours.at(max_index)), cvScalar(0, 255, 0));
-	cout << "x:" << mc[max_index].x << "y:" << mc[max_index].y << endl;
-	char tam[100];
-	sprintf_s(tam, "(%0.0f, %0.0f)", mc[max_index].x, mc[max_index].y);
-	putText(drawing, tam, Point(mc[max_index].x, mc[max_index].y), FONT_HERSHEY_SCRIPT_SIMPLEX, 0.4, cvScalar(0, 255, 0), 1);//终于能搞到最想要的东西了
-#endif
-
-	imshow("Contours", drawing);
-	waitKey(0);
-	return 0;
-}
-
-#else 
-
-//这个主函数能够实现对视频的操作
-
-
-int main()
-{
+	//初始化视频输入
 	VideoCapture video;
-	video.open("vtest.avi");
+	video.open("fire.mp4");
 	if (!video.isOpened())
 	{
 		printf("No Video\n");
@@ -284,13 +47,21 @@ int main()
 	Mat frame;
 	int frame_num = video.get(CAP_PROP_FRAME_COUNT);
 	cout << "total frame number is: " << frame_num << endl;
-	//int width = video.get(CAP_PROP_FRAME_WIDTH);
-	//int height = video.get(CAP_PROP_FRAME_HEIGHT);
+	int width = video.get(CAP_PROP_FRAME_WIDTH);
+	int height = video.get(CAP_PROP_FRAME_HEIGHT);
 	//GMM初始化设置
 	Mat kernel = getStructuringElement(MORPH_RECT, Size(3, 3), Point(-1, -1));//?
 	Mat bsmMOG2;
 	Ptr<BackgroundSubtractor> pMOG2 = createBackgroundSubtractorMOG2();//?
 
+	//保存检测结果
+	VideoWriter out;
+	out.open("res_fire.mp4", CV_FOURCC('D', 'I', 'V', 'X'), 25.0, Size(Video_W, Video_H), true);//这个参数？？
+	
+	//计数截取的框框
+	int count = 0;
+	char saveName[256];
+	//检测过程
 	while (video.read(frame))
 	{
 		resize(frame, frame, Size(Video_W, Video_H));
@@ -298,11 +69,11 @@ int main()
 		pMOG2->apply(frame, bsmMOG2);
 		morphologyEx(bsmMOG2, bsmMOG2, MORPH_OPEN, kernel);//?
 		resize(bsmMOG2, bsmMOG2, Size(Video_W, Video_H));
-		imshow("GMM", bsmMOG2);
-
+		imshow("MOG2", bsmMOG2);
+		
+		//提取边缘
 		Mat canny_output;
 		vector<vector<Point>> contours;
-
 		vector<Vec4i> hierarchy;//4维向量
 		//利用canny算法检测边缘
 		Canny(bsmMOG2, canny_output, 30, 90, 3);//这个参数的设置?
@@ -310,69 +81,229 @@ int main()
 		//查找轮廓
 		findContours(canny_output, contours, hierarchy, CV_RETR_TREE, CV_CHAIN_APPROX_SIMPLE, Point(0, 0));
 		
-		//要是可以对contours里的size进行排序就好了
-		//sort(contours.begin(), contours.end());默认的sort应该是只能对int类型进行排序
-		//找到最好的几个轮廓
-		vector<int> temp_contour;
-		for (int i = 0; i < contours.size(); i++)
+#if 1
+		if (contours.size() >= 1)
 		{
-			temp_contour.push_back(contours[i].size());
-		}
-		sort(temp_contour.rbegin(), temp_contour.rend());//从大到小排序
-		vector<int> res_contour;
-		for (int i = 0; i < CONTOUR_SIZE; i++)
-		{
-			res_contour.push_back(temp_contour[i]);
-		}
-		vector<vector<Point>> best_contours;//最好的轮廓
-		for (int i = 0; i < res_contour.size(); i++)
-		{
-			for (auto it = contours.begin(); it != contours.end();)
+			//找到最好的几个轮廓
+			vector<int> temp_contour;
+			for (int i = 0; i < contours.size(); i++)
 			{
-				if (res_contour[i] == it->size())
+				temp_contour.push_back(contours[i].size());
+			}
+			sort(temp_contour.rbegin(), temp_contour.rend());//从大到小排序
+			vector<int> res_contour;
+			for (int i = 0; i < CONTOUR_SIZE && i < temp_contour.size(); i++)
+			{
+				res_contour.push_back(temp_contour[i]);
+			}
+			vector<vector<Point>> best_contours;//最好的轮廓
+			for (int i = 0; i < res_contour.size(); i++)
+			{
+				for (auto it = contours.begin(); it != contours.end();)
 				{
-					best_contours.push_back(*it);
-					it = contours.erase(it);
-					break;
-				}
-				else
-				{
-					it++;
+					if (res_contour[i] == it->size())
+					{
+						best_contours.push_back(*it);
+						it = contours.erase(it);
+						break;
+					}
+					else
+					{
+						it++;
+					}
 				}
 			}
-		}
 
-		//计算轮廓矩
-		vector<Moments> mu(best_contours.size());
-		for (int i = 0; i < best_contours.size(); i++)
-		{
-			mu[i] = moments(best_contours[i], false);
-		}
-		//计算轮廓的质心
-		vector<Point2f> mc(best_contours.size());
-		for (int i = 0; i < best_contours.size(); i++)
-		{
-			mc[i] = Point2d(mu[i].m10 / mu[i].m00, mu[i].m01 / mu[i].m00);
-		}
-		//画轮廓及其质心并显示
-		Mat drawing = Mat::zeros(canny_output.size(), CV_8UC3);
+			//计算轮廓矩
+			vector<Moments> mu(best_contours.size());
+			for (int i = 0; i < best_contours.size(); i++)
+			{
+				mu[i] = moments(best_contours[i], false);
+			}
+			//计算轮廓的质心
+			vector<Point2f> mc(best_contours.size());
+			for (int i = 0; i < best_contours.size(); i++)
+			{
+				mc[i] = Point2d(mu[i].m10 / mu[i].m00, mu[i].m01 / mu[i].m00);
+			}
+			//画轮廓及其质心并显示
+			Mat drawing = Mat::zeros(canny_output.size(), CV_8UC3);
 
-		for (int i = 0; i < best_contours.size(); i++)
-		{
-			Scalar color = Scalar(255, 0, 0);
-			drawContours(drawing, best_contours, i, color, 2, 8, hierarchy, 0, Point());
-			circle(drawing, mc[i], 5, Scalar(0, 0, 255), -1, 8, 0);
-			rectangle(drawing, boundingRect(best_contours.at(i)), cvScalar(0, 255, 0));
-			cout << "x:" << mc[i].x << "y:" << mc[i].y << endl;
-			char tam[100];
-			sprintf_s(tam, "(%0.0f, %0.0f)", mc[i].x, mc[i].y);
-			putText(drawing, tam, Point(mc[i].x, mc[i].y), FONT_HERSHEY_SCRIPT_SIMPLEX, 0.4, cvScalar(0, 255, 0), 1);
+			for (int i = 0; i < best_contours.size(); i++)
+			{
+				Scalar color = Scalar(255, 0, 0);
+				drawContours(drawing, best_contours, i, color, 2, 8, hierarchy, 0, Point());
+				circle(drawing, mc[i], 5, Scalar(0, 0, 255), -1, 8, 0);
+				rectangle(drawing, boundingRect(best_contours.at(i)), cvScalar(0, 255, 0));
+				cout << "x:" << mc[i].x << "y:" << mc[i].y << endl;
+				char tam[100];
+				sprintf_s(tam, "(%0.0f, %0.0f)", mc[i].x, mc[i].y);
+				putText(drawing, tam, Point(mc[i].x, mc[i].y), FONT_HERSHEY_SCRIPT_SIMPLEX, 0.4, cvScalar(0, 255, 0), 1);
+			}
+
+			imshow("Contours", drawing);
+
+			vector<Rect> found, found_1, found_filtered;
+			//进行检测
+			cascade.detectMultiScale(frame, found, 1.1, 3, 0);//这个参数怎设置
+			//第一波筛选
+			for (int i = 0; i < found.size(); i++)
+			{
+				if (found[i].x > 0 && found[i].y > 0 && (found[i].x + found[i].width) < frame.cols\
+					&& (found[i].y + found[i].height) < frame.rows)
+					found_1.push_back(found[i]);
+			}
+			//第二波筛选 去嵌套
+			for (int i = 0; i < found_1.size(); i++)
+			{
+				Rect r = found_1[i];
+				int j = 0;
+				for (; j < found_1.size(); j++)
+				{
+					if (j != i && (r & found_1[j]) == found_1[j])
+						break;
+				}
+				if (j == found_1.size())
+					found_filtered.push_back(r);
+			}
+			//画矩形框 进行微调
+			for (int i = 0; i < found_filtered.size(); i++)
+			{
+				Rect r = found_filtered[i];
+				r.x += cvRound(r.width * 0.1);
+				r.width = cvRound(r.width * 0.8);
+				r.y += cvRound(r.height * 0.1);
+				r.height = cvRound(r.height * 0.8);
+			}
+
+			for (int i = 0; i < found_filtered.size(); i++)
+			{
+				Rect r = found_filtered[i];
+#if 1// 进行滤除 | 前n个
+				int lx = r.tl().x, ly = r.tl().y, rx = r.br().x, ry = r.br().y;
+				for (int i = 0; i < best_contours.size(); i++)
+				{
+					if (mc[i].x > lx && mc[i].y > ly && mc[i].x < rx && mc[i].y < ry && r.width < Filter_W && r.height < Filter_H)
+					{
+						rectangle(frame, r.tl(), r.br(), Scalar(0, 0, 255), 2);
+						//把框出来的目标输出到一个文件夹 分析误检测的特征
+						//Mat imgROI = frame(Rect(lx, ly, rx - lx, ry - ly));
+						//Mat imgROI = frame(r);
+						//sprintf_s(saveName, "cut_%04d.jpg", ++count);
+						//string img_path = img_save_path + string(saveName);
+						//imwrite(img_path, imgROI);
+						out << frame;
+					}
+				}
+#else //不进行滤除
+				rectangle(frame, r.tl(), r.br(), Scalar(0, 0, 255), 2);
+				out << frame;
+#endif
+			}
+
+			imshow("detect result", frame);
 		}
+#else 
 		
-		imshow("Contours", drawing);
-		if (waitKey(10) == 'q')
+		int x = 0, y = 0;
+		if (contours.size() != 0)
+		{
+			int max = 0, max_index = 0;
+			for (int i = 0; i < contours.size(); i++)
+			{
+				if (max < contours[i].size())
+				{
+					max = contours[i].size();
+					max_index = i;
+				}
+			} 
+
+			//计算轮廓矩
+			Moments mu;
+			mu = moments(contours[max_index], false);
+			//计算轮廓的质心
+			Point2f mc;
+			mc = Point2d(mu.m10 / mu.m00, mu.m01 / mu.m00);
+			//画轮廓及其质心并显示
+			Mat drawing = Mat::zeros(canny_output.size(), CV_8UC3);
+
+			Scalar color = Scalar(255, 0, 0);
+			drawContours(drawing, contours, max_index, color, 2, 8, hierarchy, 0, Point());
+			circle(drawing, mc, 5, Scalar(0, 0, 255), -1, 8, 0);
+			rectangle(drawing, boundingRect(contours.at(max_index)), cvScalar(0, 255, 0));
+			cout << "x:" << mc.x << "y:" << mc.y << endl;
+			char tam[100];
+			sprintf_s(tam, "(%0.0f, %0.0f)", mc.x, mc.y);
+			putText(drawing, tam, Point(mc.x, mc.y), FONT_HERSHEY_SCRIPT_SIMPLEX, 0.4, cvScalar(0, 255, 0), 1);//终于能搞到最想要的东西了
+			x = mc.x;
+			y = mc.y;
+			imshow("Contours", drawing);
+		}
+
+		vector<Rect> found, found_1, found_filtered;
+		//进行检测
+		cascade.detectMultiScale(frame, found, 1.1, 3, 0);//这个参数怎设置
+		//第一波筛选
+		for (int i = 0; i < found.size(); i++)
+		{
+			if (found[i].x > 0 && found[i].y > 0 && (found[i].x + found[i].width) < frame.cols\
+				&& (found[i].y + found[i].height) < frame.rows)
+				found_1.push_back(found[i]);
+		}
+		//第二波筛选 去嵌套
+		for (int i = 0; i < found_1.size(); i++)
+		{
+			Rect r = found_1[i];
+			int j = 0;
+			for (; j < found_1.size(); j++)
+			{
+				if (j != i && (r & found_1[j]) == found_1[j])
+					break;
+			}
+			if (j == found_1.size())
+				found_filtered.push_back(r);
+		}
+		//画矩形框 进行微调
+		for (int i = 0; i < found_filtered.size(); i++)
+		{
+			Rect r = found_filtered[i];
+			r.x += cvRound(r.width * 0.1);
+			r.width = cvRound(r.width * 0.8);
+			r.y += cvRound(r.height * 0.1);
+			r.height = cvRound(r.height * 0.8);
+		}
+
+		for (int i = 0; i < found_filtered.size(); i++)
+		{
+			Rect r = found_filtered[i];
+#if 1 //只有一个
+			int lx = r.tl().x, ly = r.tl().y, rx = r.br().x, ry = r.br().y;
+
+			if (x > lx && y > ly && x < rx && y < ry && r.width < Filter_W && r.height < Filter_H)
+			{
+				rectangle(frame, r.tl(), r.br(), Scalar(0, 0, 255), 2);
+				//把框出来的目标输出到一个文件夹 分析误检测的特征
+				//Mat imgROI = frame(Rect(lx, ly, rx - lx, ry - ly));
+				Mat imgROI = frame(r);
+				sprintf_s(saveName, "cut_%04d.jpg", ++count);
+				string img_path = img_save_path + string(saveName);
+				imwrite(img_path, imgROI);
+				//out << frame;
+			}
+#else //不进行滤除
+			rectangle(frame, r.tl(), r.br(), Scalar(0, 0, 255), 2);
+			out << frame;
+#endif
+		}
+
+		imshow("detect result", frame);
+#endif 
+		if (waitKey(1) == 'q')
 			break;
 	}
+	video.release();
+	out.release();
 	return 0;
 }
+
 #endif
